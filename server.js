@@ -34,7 +34,14 @@ const port = process.env.PORT || 3001;
 
 // Middleware to parse JSON bodies
 app.use(express.json());
-app.use(cors());
+
+const allowedOrigin = process.env.ALLOWED_ORIGIN;
+
+console.log(`Allowed origin: ${allowedOrigin}`);
+
+app.use(cors({
+    origin: allowedOrigin,
+}));
 
 // --- Gemini API Configuration ---
 // These were previously in your frontend constants.ts
@@ -68,6 +75,8 @@ const ai = new GoogleGenAI({ apiKey });
 
 // --- API Endpoint ---
 app.post('/api/generate-feedback', async (req, res) => {
+    console.log('Received request to /api/generate-feedback'); // For backend logging
+
     const { text } = req.body;
 
     if (!text || typeof text !== 'string' || text.trim() === '') {
