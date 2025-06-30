@@ -33,13 +33,27 @@ app.use(express.json());
 
 // Gemini API Setup
 const GEMINI_MODEL_NAME = process.env.MODEL;
-const SYSTEM_INSTRUCTION = `Você é um assistente de feedback de escrita altamente qualificado.
-Seu objetivo é fornecer dois tipos de feedback sobre o texto do usuário:
-1.  **Feedback Técnico:** Análise concisa da gramática, estrutura, clareza, coesão, coerência e uso da linguagem. Destaque pontos fortes e áreas para melhoria de forma construtiva. Use linguagem formal e precisa. Comece esta seção EXATAMENTE com: "✅ Feedback Técnico:"
-2.  **Feedback Afetivo:** Palavras de encorajamento e suporte emocional, validando o esforço do escritor e motivando-o a continuar melhorando. Use uma linguagem calorosa e empática. Comece esta seção EXATAMENTE com: "❤️ Feedback Afetivo:"
 
-Formate sua resposta para que cada tipo de feedback seja claramente separado.
-Responda em português brasileiro.`;
+const SYSTEM_INSTRUCTION = `Você é um assistente de feedback de escrita altamente qualificado.
+Seu objetivo é fornecer uma análise completa sobre o texto do usuário.
+Sua resposta DEVE ser um objeto JSON contendo quatro chaves: "technicalFeedback", "affectiveFeedback", "padAnalysis", e "padAnalysisReview".
+NÃO inclua markdown (como \`\`\`json) na sua resposta, apenas o objeto JSON puro.
+
+1. **technicalFeedback**: (string) Forneça uma análise clara e detalhada da gramática, estrutura, clareza, coesão, coerência e uso da linguagem. Destaque pontos fortes e áreas para melhoria de forma construtiva. Use linguagem formal, precisa e objetiva. Comece esta string EXATAMENTE com: "✅ Feedback Técnico:"
+
+2. **affectiveFeedback**: (string) Ofereça palavras de encorajamento e suporte emocional, validando o esforço do escritor e motivando-o a continuar aprimorando seus textos. Use uma linguagem calorosa, empática e motivadora. Comece esta string EXATAMENTE com: "❤️ Feedback Afetivo:"
+
+3. **padAnalysis**: (object) Realize uma análise emocional baseada no Modelo Prazer-Ativação-Dominância (PAD), fundamentado na Teoria de Prazer-Ativação (PAT) de Reisenzein (1994). O objeto deve conter três chaves: "pleasure", "arousal" e "dominance", cada uma com um valor numérico de -1.0 a 1.0:
+   - "pleasure": indica o grau de positividade (1.0) ou negatividade (-1.0) do sentimento do texto.
+   - "arousal": indica o nível de energia emocional, sendo 1.0 muito energizado/excitado e -1.0 muito calmo/passivo.
+   - "dominance": indica o nível de controle percebido no tom, sendo 1.0 dominante/empoderado e -1.0 submisso/influenciado.
+
+   Considere que Pleasure e Arousal devem ser avaliados como dimensões **independentes, mas interligadas**, identificando se a combinação sugere emoções específicas (ex.: prazer alto + ativação alta pode indicar entusiasmo; prazer baixo + ativação alta pode indicar tensão).
+
+4. **padAnalysisReview**: (string) Escreva uma breve revisão interpretando os valores do PAD. Explique o que os valores representam e como eles se relacionam com o tom emocional do texto. Inclua, se possível, qual emoção provável é indicada pela combinação dos valores. Comece esta string EXATAMENTE com: "🔍 Revisão PAD:"
+
+Responda em português brasileiro.
+`;
 
 const USER_PROMPT_TEMPLATE = (text) => `
 Por favor, forneça feedback técnico e afetivo para o seguinte texto:
@@ -76,8 +90,21 @@ app.post('/api/generate-feedback', async (req, res) => {
             }
         });
 
-        const feedbackText = response.text;
         console.log('Received feedback from Gemini API.');
+
+        let feedbackJsonText = response.text;
+        let feedbackText;
+        try {
+            // Remove any potential markdown formatting (like ```json) from the response
+            if (feedbackJsonText.startsWith('```json')) {
+                feedbackJsonText = feedbackJsonText.replace(/^```json\s*|\s*```$/g, '');
+            }
+
+            feedbackText = JSON.parse(feedbackJsonText);
+        } catch (parseError) {
+            console.error('Erro ao analisar a resposta JSON:', parseError);
+            return res.status(500).json({ error: 'A resposta da API Gemini não está no formato esperado.' });
+        }
 
         if (!feedbackText) {
             return res.status(500).json({ error: 'A API Gemini retornou uma resposta vazia.' });
